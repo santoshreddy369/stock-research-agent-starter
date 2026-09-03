@@ -1,22 +1,122 @@
 /**
- * workflows.ts: Workflow entry placeholder (tutorial fills this in).
+ * workflows.ts: register research steps as Workflow tasks.
  *
- * No tasks are registered yet. The tutorial registers tasks with SDK 1.x:
- * each task receives a TaskContext and calls other tasks via ctx.run.
- * Expect a root researchStock task plus step tasks for facts, signals,
- * catalysts, risks, and writeMemo.
+ * Each plain function from research-stock.ts is wrapped with task(...).
+ * The root task (researchStock) chains those wrappers with ctx.run so
+ * Render creates child task runs (and can retry each step on its own).
  *
- * Start command for the Workflow service: `npm run workflow:start`
+ * The web service starts ONLY the root: {slug}/researchStock
  */
 
-console.log(
-  "No Workflow tasks registered yet. Follow the tutorial to register several research tasks.",
+import { task, type TaskContext } from "@renderinc/sdk/workflows"
+import {
+  loadCompanyFacts,
+  collectSignals,
+  identifyCatalysts,
+  identifyRisks,
+  writeMemo,
+  type ResearchMemo,
+} from "./research-stock.js"
+
+/** Step task: look up company name from the mock dataset. */
+export const loadCompanyFactsTask = task(
+  {
+    name: "loadCompanyFacts",
+    timeoutSeconds: 120,
+  },
+  async function loadCompanyFactsTask(ctx: TaskContext, ticker: string) {
+    return loadCompanyFacts(ticker)
+  },
+)
+
+/** Step task: mock bullish / mixed signals. */
+export const collectSignalsTask = task(
+  {
+    name: "collectSignals",
+    timeoutSeconds: 120,
+  },
+  async function collectSignalsTask(ctx: TaskContext, ticker: string) {
+    return collectSignals(ticker)
+  },
+)
+
+/** Step task: mock upcoming catalysts. */
+export const identifyCatalystsTask = task(
+  {
+    name: "identifyCatalysts",
+    timeoutSeconds: 120,
+  },
+  async function identifyCatalystsTask(ctx: TaskContext, ticker: string) {
+    return identifyCatalysts(ticker)
+  },
+)
+
+/** Step task: mock key risks. */
+export const identifyRisksTask = task(
+  {
+    name: "identifyRisks",
+    timeoutSeconds: 120,
+  },
+  async function identifyRisksTask(ctx: TaskContext, ticker: string) {
+    return identifyRisks(ticker)
+  },
+)
+
+/** Step task: combine step outputs into the memo. */
+export const writeMemoTask = task(
+  {
+    name: "writeMemo",
+    timeoutSeconds: 120,
+  },
+  async function writeMemoTask(
+    ctx: TaskContext,
+    input: {
+      ticker: string
+      company: string
+      currentSignals: string[]
+      potentialCatalysts: string[]
+      keyRisks: string[]
+    },
+  ): Promise<ResearchMemo> {
+    return writeMemo(input)
+  },
 )
 
 /**
- * Keep the process alive.
- * If this file exited immediately, a mistaken Workflow deploy would look
- * "successful" with zero tasks. Staying up makes the missing task obvious
- * in logs / the Dashboard Tasks list.
+ * Root task: what the web service starts.
+ *
+ * Chain step tasks with ctx.run. Do not call the wrappers as functions,
+ * and do not call only the plain research-stock functions. Independent
+ * steps use Promise.all around ctx.run.
  */
-setInterval(() => {}, 1 << 30)
+export const researchStockTask = task(
+  {
+    name: "researchStock",
+    timeoutSeconds: 120,
+  },
+  async function researchStockTask(
+    ctx: TaskContext,
+    ticker: string,
+  ): Promise<ResearchMemo> {
+    const facts = await ctx.run(loadCompanyFactsTask, ticker)
+
+    // Independent steps run together (parallel chained task runs).
+    const [currentSignals, potentialCatalysts, keyRisks] = await Promise.all([
+      ctx.run(collectSignalsTask, facts.ticker),
+      ctx.run(identifyCatalystsTask, facts.ticker),
+      ctx.run(identifyRisksTask, facts.ticker),
+    ])
+
+    return ctx.run(writeMemoTask, {
+      ticker: facts.ticker,
+      company: facts.company,
+      currentSignals,
+      potentialCatalysts,
+      keyRisks,
+    })
+  },
+)
+
+console.log(
+  "Registered Workflow tasks: loadCompanyFacts, collectSignals, identifyCatalysts, identifyRisks, writeMemo, researchStock",
+)
