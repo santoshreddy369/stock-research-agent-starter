@@ -10,12 +10,12 @@
 
 projects:
   # After setup: {username}-cyc-workshop
-  - name: cyc-workshop
+  - name: santoshreddy369-cyc-workshop
     environments:
       - name: production
         services:
           - type: web
-            name: stock-research-agent-starter
+            name: santoshreddy369-stock-research-agent-starter
             runtime: node
             plan: starter
             buildCommand: npm install
